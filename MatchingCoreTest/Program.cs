@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using MatchingLib;
 using RabbitMQ.Client.Events;
 using Newtonsoft.Json;
+using System.Diagnostics;
+using System.Threading;
 
 namespace MatchingCoreTest
 {
@@ -75,16 +77,34 @@ namespace MatchingCoreTest
         static RabbitMqOut requestOut { get; set; }
         static RabbitMqIn RespIn { get; set; }
         static RabbitMqIn TxIn { get; set; }
-        List<string> users = new List<string>();
+        static bool bIsRunning { get; set; } = true;
+        static int rType { get; set; } = 0;
+        static int RpsLimit = 10000;
+        static int Rps = 0;
+        static int failPs = 0;
         static void Main(string[] args)
         {
+            if (args.Length != 2) return;
             string mqUri = "amqp://exchange:exchange@192.168.100.80:5672/";
-            requestOut = new RabbitMqOut(mqUri, "ReqToMatchingCore");
-            RespIn = new RabbitMqIn(mqUri, "RespFromMatchingCore");
-            TxIn = new RabbitMqIn(mqUri, "TxFromMatchingCore");
+            rType = int.Parse(args[0]);
+            Task task = null;
 
-            RespIn.BindReceived(MqRespInHandler);
-            TxIn.BindReceived(MqTxInHandler);
+            Task.Factory.StartNew(() => ResetRps());
+            if (rType == 0 || rType == 1)
+            {
+                RpsLimit = int.Parse(args[1]);
+                requestOut = new RabbitMqOut(mqUri, "ReqToMatchingCore");
+                if (rType != 2)
+                    task = Task.Factory.StartNew(() => InitOrders());
+            }
+            else if (rType == 2)
+            {
+                RespIn = new RabbitMqIn(mqUri, "RespFromMatchingCore");
+                TxIn = new RabbitMqIn(mqUri, "TxFromMatchingCore");
+
+                RespIn.BindReceived(MqRespInHandler);
+                TxIn.BindReceived(MqTxInHandler);
+            }
             //Console.ReadKey();
             //Req req = ReqPool.Checkout();
             //req.order.et = Order.ExecutionType.Limit;
@@ -95,58 +115,102 @@ namespace MatchingCoreTest
             //req.order.v = 500;
             //requestOut.Enqueue(req);
             //ReqPool.Checkin(req);
-            InitOrders();
             Console.ReadKey();
-            requestOut.Shutdown();
-            RespIn.Shutdown();
-            TxIn.Shutdown();
+            bIsRunning = false;
+            if (rType != 2 && task != null)
+                task.Wait();
+            if (rType == 0 || rType == 1)
+            {
+                requestOut.Shutdown();
+            }
+            else if (rType == 2)
+            {
+                RespIn.Shutdown();
+                TxIn.Shutdown();
+            }
         }
+
+        private static void ResetRps()
+        {
+            while(bIsRunning)
+            {
+                Thread.Sleep(1000);
+                int tmp1 = Interlocked.Exchange(ref Rps, 0);
+                int tmp2 = Interlocked.Exchange(ref failPs, 0);
+                Console.WriteLine("Rps:" + tmp1);
+                Console.WriteLine("Fail:" + tmp2);
+            }
+        }
+
         private static void InitOrders()
         {
             int gType = 0;
+            ParallelOptions option = new ParallelOptions();
+            option.MaxDegreeOfParallelism = 2;
+            while (bIsRunning)
             {
-                ParallelOptions option = new ParallelOptions();
-                option.MaxDegreeOfParallelism = 8;
-                Parallel.For(0, 5000000, option, item =>
+                Parallel.For(0, 1000, option, item =>
                 {
-                    Req req;
-                    Random rand = new Random();
-                    int type = gType;
-                    gType = gType == 0 ? 1 : 0;
-                    req = ReqPool.Checkout();
-                    if (type == 0)
+                    if (!bIsRunning)
+                        return;
+                    if (Rps < RpsLimit)
                     {
-                        int rangeRand = rand.Next(-1, 10000) + 1;
-                        double price = 950.00 - (double)rangeRand / 100.00;
-                        //price = decimal.Add(price, decimal.Divide(new decimal(rand.Next(0, int.MaxValue) + 1), new decimal(1000000000)));
-                        //price = decimal.Add(new decimal(1040.00), decimal.Divide(new decimal(rangeRand), new decimal(100)));
-                        long volume = (long)rand.Next(1, int.MaxValue);
-                        long user = rand.Next(1, 10000);
-                        string ticket = string.Format("{0}{1}", DateTime.Now.ToString("yyyyMMdd"), Guid.NewGuid().ToString("N"));
-                        req.order.p = price;
-                        req.order.v = volume;
-                        req.order.u = user.ToString();
-                        req.order.id = ticket;
-                        req.order.t = type == 0 ? Order.OrderType.Buy : Order.OrderType.Sell;
+                        Req req;
+                        Random rand = new Random();
+                        int type = gType;
+                        gType = gType == 0 ? 1 : 0;
+                        req = ReqPool.Checkout();
+                        if (type == 0)
+                        {
+                            double price;
+                            int rangeRand = rand.Next(-1, 10000) + 1;
+                            if (rType == 0)
+                            {
+                                price = 950 - (double)rangeRand / 100.00;
+                            }
+                            else
+                            {
+                                price = 1050.01 - (double)rangeRand / 100.00;
+                            }
+                            //price = decimal.Add(price, decimal.Divide(new decimal(rand.Next(0, int.MaxValue) + 1), new decimal(1000000000)));
+                            //price = decimal.Add(new decimal(1040.00), decimal.Divide(new decimal(rangeRand), new decimal(100)));
+                            long volume = (long)rand.Next(1, int.MaxValue);
+                            long user = rand.Next(1, 10000);
+                            string ticket = string.Format("{0}{1}", DateTime.Now.ToString("yyyyMMdd"), Guid.NewGuid().ToString("N"));
+                            req.order.p = price;
+                            req.order.v = volume;
+                            req.order.u = user.ToString();
+                            req.order.id = ticket;
+                            req.order.t = type == 0 ? Order.OrderType.Buy : Order.OrderType.Sell;
+                        }
+                        else
+                        {
+                            double price;
+                            int rangeRand = rand.Next(-1, 10000) + 1;
+                            if (rType == 0)
+                            {
+                                price = 950.01 + (double)rangeRand / 100.00;
+                            }
+                            else
+                            {
+                                price = 850 + (double)rangeRand / 100.00;
+                            }
+                            //decimal price = new decimal();
+                            //price = decimal.Add(price, decimal.Divide(new decimal(rand.Next(0, int.MaxValue) + 1), new decimal(1000000000)));
+                            //price = decimal.Subtract(new decimal(1000.00), decimal.Divide(new decimal(rangeRand), new decimal(100)));
+                            long volume = (long)rand.Next(1, int.MaxValue);
+                            long user = rand.Next(1, 10000);
+                            string ticket = string.Format("{0}{1}", DateTime.Now.ToString("yyyyMMdd"), Guid.NewGuid().ToString("N"));
+                            req.order.p = price;
+                            req.order.v = volume;
+                            req.order.u = user.ToString();
+                            req.order.id = ticket;
+                            req.order.t = type == 0 ? Order.OrderType.Buy : Order.OrderType.Sell;
+                        }
+                        requestOut.Enqueue(req);
+                        ReqPool.Checkin(req);
+                        Interlocked.Increment(ref Rps);
                     }
-                    else
-                    {
-                        int rangeRand = rand.Next(-1, 10000) + 1;
-                        double price = 950.01 + (double)rangeRand / 100.00;
-                        //decimal price = new decimal();
-                        //price = decimal.Add(price, decimal.Divide(new decimal(rand.Next(0, int.MaxValue) + 1), new decimal(1000000000)));
-                        //price = decimal.Subtract(new decimal(1000.00), decimal.Divide(new decimal(rangeRand), new decimal(100)));
-                        long volume = (long)rand.Next(1, int.MaxValue);
-                        long user = rand.Next(1, 10000);
-                        string ticket = string.Format("{0}{1}", DateTime.Now.ToString("yyyyMMdd"), Guid.NewGuid().ToString("N"));
-                        req.order.p = price;
-                        req.order.v = volume;
-                        req.order.u = user.ToString();
-                        req.order.id = ticket;
-                        req.order.t = type == 0 ? Order.OrderType.Buy : Order.OrderType.Sell;
-                    }
-                    requestOut.Enqueue(req);
-                    ReqPool.Checkin(req);
                 }
                 );
             }
@@ -156,10 +220,10 @@ namespace MatchingCoreTest
         {
             var bytes = e.Body;
             Tx tx = TxPool.Checkout();
-            tx.FromBytes(bytes);
-            Console.WriteLine(tx.ToString());
+            //tx.FromBytes(bytes);
+            //Console.WriteLine(tx.ToString());
             TxPool.Checkin(tx);
-            TxIn.MsgFinished(e);
+            //TxIn.MsgFinished(e);
         }
 
         private static void MqRespInHandler(object sender, BasicDeliverEventArgs e)
@@ -167,9 +231,10 @@ namespace MatchingCoreTest
             var bytes = e.Body;
             Resp resp = RespPool.Checkout();
             resp.FromBytes(bytes);
-            Console.WriteLine(resp.ToString());
+            if (!resp.Success) Interlocked.Increment(ref failPs);
+            //Console.WriteLine(resp.ToString());
             RespPool.Checkin(resp);
-            RespIn.MsgFinished(e);
+            //RespIn.MsgFinished(e);
         }
     }
 }
