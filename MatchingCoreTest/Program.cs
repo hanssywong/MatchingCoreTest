@@ -8,6 +8,7 @@ using RabbitMQ.Client.Events;
 using Newtonsoft.Json;
 using System.Diagnostics;
 using System.Threading;
+using System.Configuration;
 
 namespace MatchingCoreTest
 {
@@ -75,17 +76,27 @@ namespace MatchingCoreTest
     class Program
     {
         static RabbitMqOut requestOut { get; set; }
+        static RabbitMqOut respOut { get; set; }
+        static RabbitMqOut txOut { get; set; }
         static RabbitMqIn RespIn { get; set; }
         static RabbitMqIn TxIn { get; set; }
         static bool bIsRunning { get; set; } = true;
+        static RabbitMqIn requestIn { get; set; }
         static int rType { get; set; } = 0;
         static int RpsLimit = 10000;
         static int Rps = 0;
+        static int Recps = 0;
+        static int Txps = 0;
         static int failPs = 0;
         static void Main(string[] args)
         {
+            string reqQueue = "ReqToMatchingCore";
+            string respQueue = "RespFromMatchingCore";
+            string txQueue = "TxFromMatchingCore";
             if (args.Length != 2) return;
-            string mqUri = "amqp://exchange:exchange@192.168.100.80:5672/";
+            string mqUriReq = ConfigurationManager.AppSettings["uriReq"].ToString();
+            string mqUriResp = ConfigurationManager.AppSettings["uriResp"].ToString();
+            string mqUriTx = ConfigurationManager.AppSettings["uriTx"].ToString();
             rType = int.Parse(args[0]);
             Task task = null;
 
@@ -93,17 +104,38 @@ namespace MatchingCoreTest
             if (rType == 0 || rType == 1)
             {
                 RpsLimit = int.Parse(args[1]);
-                requestOut = new RabbitMqOut(mqUri, "ReqToMatchingCore");
-                if (rType != 2)
-                    task = Task.Factory.StartNew(() => InitOrders());
+                requestOut = new RabbitMqOut(mqUriReq, reqQueue);
+                task = Task.Factory.StartNew(() => InitOrders());
             }
             else if (rType == 2)
             {
-                RespIn = new RabbitMqIn(mqUri, "RespFromMatchingCore");
-                TxIn = new RabbitMqIn(mqUri, "TxFromMatchingCore");
+                ushort pre = ushort.Parse(args[1]);
+                RespIn = new RabbitMqIn(mqUriResp, respQueue, pre);
+                TxIn = new RabbitMqIn(mqUriTx, txQueue, pre);
 
                 RespIn.BindReceived(MqRespInHandler);
                 TxIn.BindReceived(MqTxInHandler);
+            }
+            else if (rType == 3)
+            {
+                ushort pre = ushort.Parse(args[1]);
+                requestIn = new RabbitMqIn(mqUriReq, reqQueue, pre);
+
+                requestIn.BindReceived(MqReqInHandler);
+            }
+            else if (rType == 4)
+            {
+                RpsLimit = int.Parse(args[1]);
+                respOut = new RabbitMqOut(mqUriResp, respQueue);
+                task = Task.Factory.StartNew(() => FailReply());
+                //Task.Factory.StartNew(() => FailReply());
+            }
+            else if (rType == 5)
+            {
+                RpsLimit = int.Parse(args[1]);
+                txOut = new RabbitMqOut(mqUriTx, txQueue);
+                task = Task.Factory.StartNew(() => txReply());
+                //Task.Factory.StartNew(() => FailReply());
             }
             //Console.ReadKey();
             //Req req = ReqPool.Checkout();
@@ -117,7 +149,7 @@ namespace MatchingCoreTest
             //ReqPool.Checkin(req);
             Console.ReadKey();
             bIsRunning = false;
-            if (rType != 2 && task != null)
+            if ((rType == 0 || rType == 1) && task != null)
                 task.Wait();
             if (rType == 0 || rType == 1)
             {
@@ -128,6 +160,74 @@ namespace MatchingCoreTest
                 RespIn.Shutdown();
                 TxIn.Shutdown();
             }
+            else if (rType == 3)
+            {
+                requestIn.Shutdown();
+            }
+            else if (rType == 4)
+            {
+                task.Wait();
+                respOut.Shutdown();
+            }
+            else if (rType == 5)
+            {
+                task.Wait();
+                txOut.Shutdown();
+            }
+        }
+
+        private static void txReply()
+        {
+            while (bIsRunning)
+            {
+                for (int i = 0; i < 1000; i++)
+                {
+                    if (!bIsRunning)
+                        return;
+                    if (Rps < RpsLimit)
+                    {
+                        Tx tx = TxPool.Checkout();
+                        txOut.Enqueue(tx);
+                        Rps++;
+                    }
+                }
+            }
+        }
+
+        private static void FailReply()
+        {
+            ParallelOptions option = new ParallelOptions();
+            option.MaxDegreeOfParallelism = 12;
+            Req req = new Req();
+            req.order = new Order();
+            var binObj = req.ToBytes();
+            while (bIsRunning)
+            {
+                //Parallel.For(0, 1000, option, item =>
+                for (int i = 0; i < 1000; i++)
+                {
+                    if (!bIsRunning)
+                        return;
+                    if (Rps < RpsLimit)
+                    {
+                        var rejObj = Resp.ConstructRejectBuffer(binObj.bytes);
+                        respOut.Enqueue(rejObj.bytes);
+                        Resp.CheckIn(rejObj);
+                        //Interlocked.Increment(ref Rps);
+                        Rps++;
+                    }
+                }
+                //);
+            }
+        }
+
+        private static void MqReqInHandler(object sender, BasicDeliverEventArgs e)
+        {
+            var bytes = e.Body;
+            Req req = ReqPool.Checkout();
+            //Interlocked.Increment(ref Rps);
+            ReqPool.Checkin(req);
+            //TxIn.MsgFinished(e);
         }
 
         private static void ResetRps()
@@ -137,8 +237,12 @@ namespace MatchingCoreTest
                 Thread.Sleep(1000);
                 int tmp1 = Interlocked.Exchange(ref Rps, 0);
                 int tmp2 = Interlocked.Exchange(ref failPs, 0);
+                int tmp3 = Interlocked.Exchange(ref Recps, 0);
+                int tmp4 = Interlocked.Exchange(ref Txps, 0);
                 Console.WriteLine("Rps:" + tmp1);
                 Console.WriteLine("Fail:" + tmp2);
+                Console.WriteLine("Recps:" + tmp3);
+                Console.WriteLine("Txps:" + tmp4);
             }
         }
 
@@ -149,7 +253,8 @@ namespace MatchingCoreTest
             option.MaxDegreeOfParallelism = 2;
             while (bIsRunning)
             {
-                Parallel.For(0, 1000, option, item =>
+                //Parallel.For(0, 1000, option, item =>
+                for (int i = 0; i < 1000; i++)
                 {
                     if (!bIsRunning)
                         return;
@@ -209,10 +314,11 @@ namespace MatchingCoreTest
                         }
                         requestOut.Enqueue(req);
                         ReqPool.Checkin(req);
-                        Interlocked.Increment(ref Rps);
+                        //Interlocked.Increment(ref Rps);
+                        Rps++;
                     }
                 }
-                );
+                //);
             }
         }
 
@@ -222,6 +328,7 @@ namespace MatchingCoreTest
             Tx tx = TxPool.Checkout();
             //tx.FromBytes(bytes);
             //Console.WriteLine(tx.ToString());
+            //Interlocked.Increment(ref Txps);
             TxPool.Checkin(tx);
             //TxIn.MsgFinished(e);
         }
@@ -231,6 +338,7 @@ namespace MatchingCoreTest
             var bytes = e.Body;
             Resp resp = RespPool.Checkout();
             resp.FromBytes(bytes);
+            //Interlocked.Increment(ref Recps);
             if (!resp.Success) Interlocked.Increment(ref failPs);
             //Console.WriteLine(resp.ToString());
             RespPool.Checkin(resp);

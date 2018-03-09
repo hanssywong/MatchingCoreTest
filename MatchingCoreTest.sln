@@ -7,7 +7,14 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MatchingCoreTest", "Matchin
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MatchingLib", "..\MatchingLib\MatchingLib\MatchingLib.csproj", "{87856AE8-EEBA-4175-B78B-16A11B63F413}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestSocketServer", "TestSocketServer\TestSocketServer.csproj", "{AF00B797-2173-40BB-92AE-7969B54F2CAF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TestSocketClient", "TestSocketClient\TestSocketClient.csproj", "{28D07A61-ABE2-449E-925F-1B8B5BD77BDE}"
+EndProject
 Global
+	GlobalSection(Performance) = preSolution
+		HasPerformanceSessions = true
+	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
@@ -21,6 +28,14 @@ Global
 		{87856AE8-EEBA-4175-B78B-16A11B63F413}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{87856AE8-EEBA-4175-B78B-16A11B63F413}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{87856AE8-EEBA-4175-B78B-16A11B63F413}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AF00B797-2173-40BB-92AE-7969B54F2CAF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AF00B797-2173-40BB-92AE-7969B54F2CAF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AF00B797-2173-40BB-92AE-7969B54F2CAF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AF00B797-2173-40BB-92AE-7969B54F2CAF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{28D07A61-ABE2-449E-925F-1B8B5BD77BDE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{28D07A61-ABE2-449E-925F-1B8B5BD77BDE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{28D07A61-ABE2-449E-925F-1B8B5BD77BDE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{28D07A61-ABE2-449E-925F-1B8B5BD77BDE}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
