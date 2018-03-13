@@ -1,5 +1,8 @@
-﻿using System;
+﻿using BaseHelper;
+using MatchingLib;
+using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -9,6 +12,7 @@ using System.Threading.Tasks;
 
 namespace TestSocketServer
 {
+    /*
     // State object for reading client data asynchronously  
     public class StateObject
     {
@@ -21,9 +25,11 @@ namespace TestSocketServer
         // Received data string.  
         public StringBuilder sb { get; } = new StringBuilder();
     }
+    */
 
     public class AsynchronousSocketListener
     {
+        /*
         // Thread signal.  
         public static ManualResetEvent allDone = new ManualResetEvent(false);
 
@@ -180,11 +186,47 @@ namespace TestSocketServer
                 Console.WriteLine(e.ToString());
             }
         }
-
+        */
         public static int Main(String[] args)
         {
-            StartListening();
+            TcpServer.Server.LogError += Console.WriteLine;
+            TcpServer.Server.LogInfo += Console.WriteLine;
+            TcpServer.Server.MsgArriveHdr += MsgArriveHdr;
+            TcpServer.Server.StartListening(ConfigurationManager.AppSettings["ip"].ToString(), int.Parse(ConfigurationManager.AppSettings["port"]));
+            Console.ReadKey();
+            //StartListening();
             return 0;
         }
+        static int cnt = 0;
+        static objPool<Reply> replyPool { get; } = new objPool<Reply>(() => new Reply());
+        private static void MsgArriveHdr(byte[] bytes, long length, StateObject obj)
+        {
+            //try
+            //{
+                //Console.WriteLine(Encoding.Default.GetString(bytes, 0, (int)length));
+                obj.Send(Reply.ConstructRejectBuffer());
+            Interlocked.Increment(ref cnt);
+            Console.WriteLine(string.Format("Hdr cnt:{0}, length:{1}, {2}", cnt, length, obj.workSocket.LocalEndPoint.ToString()));
+            //}
+            //catch(Exception e)
+            //{
+            //    Console.WriteLine(e.ToString());
+            //}
+        }
+
+        private static void LogInfo(string info)
+        {
+            Console.WriteLine(string.Format("Info:{0}", info));
+        }
+
+        private static void LogError(string error)
+        {
+            Console.WriteLine(string.Format("Error:{0}", error));
+        }
+    }
+
+    public class Reply : ProcessOrderResult
+    {
+
     }
 }

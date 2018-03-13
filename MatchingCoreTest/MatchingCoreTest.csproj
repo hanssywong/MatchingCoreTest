@@ -66,6 +66,10 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\BaseHelper\BaseHelper\BaseHelper.csproj">
+      <Project>{c2632e4d-e8fa-4bd8-bf85-2601c9f65ae0}</Project>
+      <Name>BaseHelper</Name>
+    </ProjectReference>
     <ProjectReference Include="..\..\MatchingLib\MatchingLib\MatchingLib.csproj">
       <Project>{87856ae8-eeba-4175-b78b-16a11b63f413}</Project>
       <Name>MatchingLib</Name>

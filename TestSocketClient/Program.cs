@@ -3,24 +3,29 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Text;
+using MatchingLib;
+using System.Configuration;
+using System.Threading.Tasks;
+using BaseHelper;
 
 namespace TestSocketClient
 {
     // State object for receiving data from remote device.  
-    public class StateObject
-    {
-        // Client socket.  
-        public Socket workSocket = null;
-        // Size of receive buffer.  
-        public const int BufferSize = 256;
-        // Receive buffer.  
-        public byte[] buffer = new byte[BufferSize];
-        // Received data string.  
-        public StringBuilder sb = new StringBuilder();
-    }
+    //public class StateObject
+    //{
+    //    // Client socket.  
+    //    public Socket workSocket = null;
+    //    // Size of receive buffer.  
+    //    public const int BufferSize = 256;
+    //    // Receive buffer.  
+    //    public byte[] buffer = new byte[BufferSize];
+    //    // Received data string.  
+    //    public StringBuilder sb = new StringBuilder();
+    //}
 
     public class AsynchronousClient
     {
+        /*
         // The port number for the remote device.  
         private const int port = 9998;
 
@@ -202,11 +207,68 @@ namespace TestSocketClient
                 Console.WriteLine(e.ToString());
             }
         }
-
+        */
+        static objPool<Req> ReqPool { get; } = new objPool<Req>(() => new Req());
+        static objPool<SimpleTcpClient> clientPool { get; set; }
+        static bool IsRunning { get; set; } = true;
+        static int cnt = 0;
         public static int Main(String[] args)
         {
-            StartClient();
+            string ip = ConfigurationManager.AppSettings["ip"].ToString();
+            int port = int.Parse(ConfigurationManager.AppSettings["port"]);
+            //StartClient();
+            clientPool = new objPool<SimpleTcpClient>(() => new SimpleTcpClient(ip, port));
+            Task task = Task.Factory.StartNew(() => SendReqTask());
+            Task.Factory.StartNew(() => callback());
+            Console.ReadKey();
+            IsRunning = false;
+            task.Wait();
             return 0;
+        }
+        public static void callback()
+        {
+            while(IsRunning)
+            {
+                Thread.Sleep(1000);
+                int tmp1 = Interlocked.Exchange(ref cnt, 0);
+                Console.WriteLine(string.Format("Rps:", tmp1));
+            }
+        }
+        public static void SendReqTask()
+        {
+            while (IsRunning)
+            {
+                try
+                {
+                    SimpleTcpClient client = clientPool.Checkout();
+                    client.LogInfo += Console.WriteLine;
+                    client.LogError += Console.WriteLine;
+                    Req req = ReqPool.Checkout();
+                    var binObj = req.ToBytes();
+                    client.Connect();
+                    client.Send(binObj.bytes, (int)binObj.ms.Position);
+                    byte[] bytes = null;
+                    var len = client.Receive(out bytes);
+                    Console.WriteLine(string.Format("len:{0}", len));
+                    client.Shutdown();
+                    Req.CheckIn(binObj);
+                    ReqPool.Checkin(req);
+                    Interlocked.Increment(ref cnt);
+                    if (cnt >= 10) Environment.Exit(0);
+                    clientPool.Checkin(client);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e.ToString());
+                }
+            }
+        }
+    }
+    public class Req : RequestToMatching
+    {
+        public Req()
+        {
+            order = new Order();
         }
     }
 }

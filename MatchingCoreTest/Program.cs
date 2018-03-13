@@ -9,6 +9,7 @@ using Newtonsoft.Json;
 using System.Diagnostics;
 using System.Threading;
 using System.Configuration;
+using BaseHelper;
 
 namespace MatchingCoreTest
 {
@@ -38,7 +39,7 @@ namespace MatchingCoreTest
         static objPool<Req> Pool = new objPool<Req>(() => new Req() { order = new Order() });
         public static Req Checkout()
         {
-            return Pool.CheckoutMT();
+            return Pool.Checkout();
         }
         public static void Checkin(Req req)
         {
@@ -51,7 +52,7 @@ namespace MatchingCoreTest
         static objPool<Tx> Pool = new objPool<Tx>(() => new Tx());
         public static Tx Checkout()
         {
-            return Pool.CheckoutMT();
+            return Pool.Checkout();
         }
         public static void Checkin(Tx tx)
         {
@@ -64,7 +65,7 @@ namespace MatchingCoreTest
         static objPool<Resp> Pool = new objPool<Resp>(() => new Resp() { order = new Order() });
         public static Resp Checkout()
         {
-            return Pool.CheckoutMT();
+            return Pool.Checkout();
         }
         public static void Checkin(Resp resp)
         {
@@ -210,7 +211,7 @@ namespace MatchingCoreTest
                         return;
                     if (Rps < RpsLimit)
                     {
-                        var rejObj = Resp.ConstructRejectBuffer(binObj.bytes);
+                        var rejObj = Resp.ConstructRejectBuffer();
                         respOut.Enqueue(rejObj.bytes);
                         Resp.CheckIn(rejObj);
                         //Interlocked.Increment(ref Rps);
@@ -265,6 +266,7 @@ namespace MatchingCoreTest
                         int type = gType;
                         gType = gType == 0 ? 1 : 0;
                         req = ReqPool.Checkout();
+                        req.dt = DateTime.Now;
                         if (type == 0)
                         {
                             double price;
@@ -286,7 +288,7 @@ namespace MatchingCoreTest
                             req.order.v = volume;
                             req.order.u = user.ToString();
                             req.order.id = ticket;
-                            req.order.t = type == 0 ? Order.OrderType.Buy : Order.OrderType.Sell;
+                            req.order.t = Order.OrderType.Buy;
                         }
                         else
                         {
@@ -310,7 +312,7 @@ namespace MatchingCoreTest
                             req.order.v = volume;
                             req.order.u = user.ToString();
                             req.order.id = ticket;
-                            req.order.t = type == 0 ? Order.OrderType.Buy : Order.OrderType.Sell;
+                            req.order.t = Order.OrderType.Sell;
                         }
                         requestOut.Enqueue(req);
                         ReqPool.Checkin(req);
