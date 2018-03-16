@@ -76,37 +76,59 @@ namespace MatchingCoreTest
     }
     class Program
     {
-        static RabbitMqOut requestOut { get; set; }
-        static RabbitMqOut respOut { get; set; }
-        static RabbitMqOut txOut { get; set; }
-        static RabbitMqIn RespIn { get; set; }
-        static RabbitMqIn TxIn { get; set; }
+        //static RabbitMqOut requestOut { get; set; }
+        //static RabbitMqOut respOut { get; set; }
+        //static RabbitMqOut txOut { get; set; }
+        //static RabbitMqIn RespIn { get; set; }
+        //static RabbitMqIn TxIn { get; set; }
+        //static RabbitMqIn requestIn { get; set; }
+        static SimpleTcpClient client { get; } = new SimpleTcpClient();
         static bool bIsRunning { get; set; } = true;
-        static RabbitMqIn requestIn { get; set; }
         static int rType { get; set; } = 0;
         static int RpsLimit = 10000;
         static int Rps = 0;
         static int Recps = 0;
         static int Txps = 0;
         static int failPs = 0;
+        static bool Ismistake(int[] a)
+        {
+            if (a[5] == 4)
+            {
+                return true;
+            }
+            for (int i = 0; i < 5; i++)
+            {
+                if ((a[i] == 5 && a[i + 1] == 3) || (a[i] == 3 && a[i + 1] == 5))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
         static void Main(string[] args)
         {
-            string reqQueue = "ReqToMatchingCore";
-            string respQueue = "RespFromMatchingCore";
-            string txQueue = "TxFromMatchingCore";
+            //string reqQueue = "ReqToMatchingCore";
+            //string respQueue = "RespFromMatchingCore";
+            //string txQueue = "TxFromMatchingCore";
             if (args.Length != 2) return;
-            string mqUriReq = ConfigurationManager.AppSettings["uriReq"].ToString();
-            string mqUriResp = ConfigurationManager.AppSettings["uriResp"].ToString();
-            string mqUriTx = ConfigurationManager.AppSettings["uriTx"].ToString();
+            //string mqUriReq = ConfigurationManager.AppSettings["uriReq"].ToString();
+            //string mqUriResp = ConfigurationManager.AppSettings["uriResp"].ToString();
+            //string mqUriTx = ConfigurationManager.AppSettings["uriTx"].ToString();
+            string RequestReceiverIP = ConfigurationManager.AppSettings["RequestReceiverIP"];
+            int RequestReceiverPort = int.Parse(ConfigurationManager.AppSettings["RequestReceiverPort"]);
+            string TxReceiverIP = ConfigurationManager.AppSettings["TxReceiverIP"];
+            int TxReceiverPort = int.Parse(ConfigurationManager.AppSettings["TxReceiverPort"]);
             rType = int.Parse(args[0]);
-            Task task = null;
+            List<Task> tasks = new List<Task>();
 
             Task.Factory.StartNew(() => ResetRps());
             if (rType == 0 || rType == 1)
             {
                 RpsLimit = int.Parse(args[1]);
-                requestOut = new RabbitMqOut(mqUriReq, reqQueue);
-                task = Task.Factory.StartNew(() => InitOrders());
+                //requestOut = new RabbitMqOut(mqUriReq, reqQueue);
+                client.Connect(RequestReceiverIP, RequestReceiverPort);
+                tasks.Add(Task.Factory.StartNew(() => InitOrders()));
+                tasks.Add(Task.Factory.StartNew(() => RespReceiver()));
             }
             else if (rType == 2)
             {
@@ -128,14 +150,14 @@ namespace MatchingCoreTest
             {
                 RpsLimit = int.Parse(args[1]);
                 respOut = new RabbitMqOut(mqUriResp, respQueue);
-                task = Task.Factory.StartNew(() => FailReply());
+                tasks = Task.Factory.StartNew(() => FailReply());
                 //Task.Factory.StartNew(() => FailReply());
             }
             else if (rType == 5)
             {
                 RpsLimit = int.Parse(args[1]);
                 txOut = new RabbitMqOut(mqUriTx, txQueue);
-                task = Task.Factory.StartNew(() => txReply());
+                tasks = Task.Factory.StartNew(() => txReply());
                 //Task.Factory.StartNew(() => FailReply());
             }
             //Console.ReadKey();
@@ -150,8 +172,8 @@ namespace MatchingCoreTest
             //ReqPool.Checkin(req);
             Console.ReadKey();
             bIsRunning = false;
-            if ((rType == 0 || rType == 1) && task != null)
-                task.Wait();
+            if ((rType == 0 || rType == 1) && tasks != null)
+                tasks.Wait();
             if (rType == 0 || rType == 1)
             {
                 requestOut.Shutdown();
@@ -167,13 +189,21 @@ namespace MatchingCoreTest
             }
             else if (rType == 4)
             {
-                task.Wait();
+                tasks.Wait();
                 respOut.Shutdown();
             }
             else if (rType == 5)
             {
-                task.Wait();
+                tasks.Wait();
                 txOut.Shutdown();
+            }
+        }
+
+        private static void RespReceiver()
+        {
+            while(bIsRunning)
+            {
+
             }
         }
 
@@ -188,7 +218,7 @@ namespace MatchingCoreTest
                     if (Rps < RpsLimit)
                     {
                         Tx tx = TxPool.Checkout();
-                        txOut.Enqueue(tx);
+                        //txOut.Enqueue(tx);
                         Rps++;
                     }
                 }
@@ -212,8 +242,8 @@ namespace MatchingCoreTest
                     if (Rps < RpsLimit)
                     {
                         var rejObj = Resp.ConstructRejectBuffer();
-                        respOut.Enqueue(rejObj.bytes);
-                        Resp.CheckIn(rejObj);
+                        //respOut.Enqueue(rejObj.bytes);
+                        //Resp.CheckIn(rejObj);
                         //Interlocked.Increment(ref Rps);
                         Rps++;
                     }
@@ -314,7 +344,7 @@ namespace MatchingCoreTest
                             req.order.id = ticket;
                             req.order.t = Order.OrderType.Sell;
                         }
-                        requestOut.Enqueue(req);
+                        client.Send(req);
                         ReqPool.Checkin(req);
                         //Interlocked.Increment(ref Rps);
                         Rps++;
