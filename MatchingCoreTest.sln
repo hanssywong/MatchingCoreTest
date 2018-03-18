@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MatchingLib", "..\MatchingL
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BaseHelper", "..\BaseHelper\BaseHelper\BaseHelper.csproj", "{C2632E4D-E8FA-4BD8-BF85-2601C9F65AE0}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NLogHelper", "..\NLogHelper\NLogHelper\NLogHelper.csproj", "{53E4E36B-0F39-4C42-AB7B-6EF01E34D880}"
+EndProject
 Global
 	GlobalSection(Performance) = preSolution
 		HasPerformanceSessions = true
@@ -30,6 +32,10 @@ Global
 		{C2632E4D-E8FA-4BD8-BF85-2601C9F65AE0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C2632E4D-E8FA-4BD8-BF85-2601C9F65AE0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C2632E4D-E8FA-4BD8-BF85-2601C9F65AE0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{53E4E36B-0F39-4C42-AB7B-6EF01E34D880}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{53E4E36B-0F39-4C42-AB7B-6EF01E34D880}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{53E4E36B-0F39-4C42-AB7B-6EF01E34D880}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{53E4E36B-0F39-4C42-AB7B-6EF01E34D880}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

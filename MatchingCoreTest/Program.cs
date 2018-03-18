@@ -10,6 +10,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Configuration;
 using BaseHelper;
+using NLogHelper;
 
 namespace MatchingCoreTest
 {
@@ -105,8 +106,19 @@ namespace MatchingCoreTest
             }
             return false;
         }
+        static void WriteLog(string msg)
+        {
+            NLogger.Instance.WriteLog(NLogger.LogLevel.Info, msg);
+        }
+        static void WriteError(string msg)
+        {
+            NLogger.Instance.WriteLog(NLogger.LogLevel.Error, msg);
+        }
         static void Main(string[] args)
         {
+            NLogger.Instance.Init(".", "MatchingCoreTest", Encoding.Default, NLogger.LogLevel.Debug);
+            client.LogError += WriteError;
+            client.LogInfo += WriteLog;
             //string reqQueue = "ReqToMatchingCore";
             //string respQueue = "RespFromMatchingCore";
             //string txQueue = "TxFromMatchingCore";
@@ -114,51 +126,30 @@ namespace MatchingCoreTest
             //string mqUriReq = ConfigurationManager.AppSettings["uriReq"].ToString();
             //string mqUriResp = ConfigurationManager.AppSettings["uriResp"].ToString();
             //string mqUriTx = ConfigurationManager.AppSettings["uriTx"].ToString();
-            string RequestReceiverIP = ConfigurationManager.AppSettings["RequestReceiverIP"];
-            int RequestReceiverPort = int.Parse(ConfigurationManager.AppSettings["RequestReceiverPort"]);
-            string TxReceiverIP = ConfigurationManager.AppSettings["TxReceiverIP"];
-            int TxReceiverPort = int.Parse(ConfigurationManager.AppSettings["TxReceiverPort"]);
             rType = int.Parse(args[0]);
             List<Task> tasks = new List<Task>();
 
             Task.Factory.StartNew(() => ResetRps());
             if (rType == 0 || rType == 1)
             {
+                string RequestReceiverIP = ConfigurationManager.AppSettings["RequestReceiverIP"];
+                int RequestReceiverPort = int.Parse(ConfigurationManager.AppSettings["RequestReceiverPort"]);
                 RpsLimit = int.Parse(args[1]);
                 //requestOut = new RabbitMqOut(mqUriReq, reqQueue);
                 client.Connect(RequestReceiverIP, RequestReceiverPort);
+                //Thread.Sleep(5000);
+                //client.Shutdown();
+                //Console.ReadKey();
+                //Environment.Exit(0);
                 tasks.Add(Task.Factory.StartNew(() => InitOrders()));
                 tasks.Add(Task.Factory.StartNew(() => RespReceiver()));
             }
             else if (rType == 2)
             {
-                ushort pre = ushort.Parse(args[1]);
-                RespIn = new RabbitMqIn(mqUriResp, respQueue, pre);
-                TxIn = new RabbitMqIn(mqUriTx, txQueue, pre);
-
-                RespIn.BindReceived(MqRespInHandler);
-                TxIn.BindReceived(MqTxInHandler);
-            }
-            else if (rType == 3)
-            {
-                ushort pre = ushort.Parse(args[1]);
-                requestIn = new RabbitMqIn(mqUriReq, reqQueue, pre);
-
-                requestIn.BindReceived(MqReqInHandler);
-            }
-            else if (rType == 4)
-            {
-                RpsLimit = int.Parse(args[1]);
-                respOut = new RabbitMqOut(mqUriResp, respQueue);
-                tasks = Task.Factory.StartNew(() => FailReply());
-                //Task.Factory.StartNew(() => FailReply());
-            }
-            else if (rType == 5)
-            {
-                RpsLimit = int.Parse(args[1]);
-                txOut = new RabbitMqOut(mqUriTx, txQueue);
-                tasks = Task.Factory.StartNew(() => txReply());
-                //Task.Factory.StartNew(() => FailReply());
+                string TxReceiverIP = ConfigurationManager.AppSettings["TxReceiverIP"];
+                int TxReceiverPort = int.Parse(ConfigurationManager.AppSettings["TxReceiverPort"]);
+                client.Connect(TxReceiverIP, TxReceiverPort);
+                tasks.Add(Task.Factory.StartNew(() => TxReceiver()));
             }
             //Console.ReadKey();
             //Req req = ReqPool.Checkout();
@@ -172,39 +163,66 @@ namespace MatchingCoreTest
             //ReqPool.Checkin(req);
             Console.ReadKey();
             bIsRunning = false;
-            if ((rType == 0 || rType == 1) && tasks != null)
-                tasks.Wait();
-            if (rType == 0 || rType == 1)
+            client.Shutdown();
+
+            Task.WaitAll(tasks.ToArray());
+            NLogger.Instance.Shutdown();
+        }
+
+        private static void TxReceiver()
+        {
+            while (bIsRunning || !client.IsReceiveQueueEmpty)
             {
-                requestOut.Shutdown();
+                try
+                {
+                    byte[] buffer;
+                    if (client.ReceiveBuffer(out buffer))
+                    {
+                        var tx = TxPool.Checkout();
+                        tx.FromBytes(buffer);
+                        Txps++;
+                        client.CheckinBuffer(buffer);
+                    }
+                    else
+                    {
+                        Thread.Sleep(100);
+                    }
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e.ToString());
+                }
             }
-            else if (rType == 2)
-            {
-                RespIn.Shutdown();
-                TxIn.Shutdown();
-            }
-            else if (rType == 3)
-            {
-                requestIn.Shutdown();
-            }
-            else if (rType == 4)
-            {
-                tasks.Wait();
-                respOut.Shutdown();
-            }
-            else if (rType == 5)
-            {
-                tasks.Wait();
-                txOut.Shutdown();
-            }
+            Console.WriteLine("TxReceiver shutdown");
         }
 
         private static void RespReceiver()
         {
-            while(bIsRunning)
+            while(bIsRunning || !client.IsReceiveQueueEmpty)
             {
-
+                try
+                {
+                    byte[] buffer;
+                    if (client.ReceiveBuffer(out buffer))
+                    {
+                        var resp = RespPool.Checkout();
+                        resp.FromBytes(buffer);
+                        client.CheckinBuffer(buffer);
+                        Recps++;
+                    }
+                    else
+                    {
+                        Thread.Sleep(100);
+                    }
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e.ToString());
+                }
             }
+            Console.WriteLine("RespReceiver shutdown");
         }
 
         private static void txReply()
@@ -270,10 +288,12 @@ namespace MatchingCoreTest
                 int tmp2 = Interlocked.Exchange(ref failPs, 0);
                 int tmp3 = Interlocked.Exchange(ref Recps, 0);
                 int tmp4 = Interlocked.Exchange(ref Txps, 0);
+                int tmp5 = Interlocked.Exchange(ref client.rps, 0);
                 Console.WriteLine("Rps:" + tmp1);
                 Console.WriteLine("Fail:" + tmp2);
                 Console.WriteLine("Recps:" + tmp3);
                 Console.WriteLine("Txps:" + tmp4);
+                Console.WriteLine("send:" + tmp5);
             }
         }
 
@@ -349,9 +369,16 @@ namespace MatchingCoreTest
                         //Interlocked.Increment(ref Rps);
                         Rps++;
                     }
+                    else
+                    {
+                        Thread.Sleep(20);
+                        //Console.WriteLine("InitOrders shutdown");
+                        //return;
+                    }
                 }
                 //);
             }
+            Console.WriteLine("InitOrders shutdown");
         }
 
         private static void MqTxInHandler(object sender, BasicDeliverEventArgs e)

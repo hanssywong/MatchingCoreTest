@@ -74,6 +74,10 @@
       <Project>{87856ae8-eeba-4175-b78b-16a11b63f413}</Project>
       <Name>MatchingLib</Name>
     </ProjectReference>
+    <ProjectReference Include="..\..\NLogHelper\NLogHelper\NLogHelper.csproj">
+      <Project>{53e4e36b-0f39-4c42-ab7b-6ef01e34d880}</Project>
+      <Name>NLogHelper</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
