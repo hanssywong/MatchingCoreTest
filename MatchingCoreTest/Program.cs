@@ -116,7 +116,6 @@ namespace MatchingCoreTest
         }
         static void Main(string[] args)
         {
-            //test
             NLogger.Instance.Init(".", "MatchingCoreTest", Encoding.Default, NLogger.LogLevel.Debug);
             client.LogError += WriteError;
             client.LogInfo += WriteLog;
