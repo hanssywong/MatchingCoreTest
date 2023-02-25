@@ -5,12 +5,14 @@ namespace TxReceiverSvc
     public class Worker : BackgroundService
     {
         private readonly ILogger<Worker> _logger;
+        private readonly IConfiguration _config;
         private TxReceiverObj receiver { get; } = null!;
         private Task task { get; set; } = null!;
 
-        public Worker(ILogger<Worker> logger)
+        public Worker(ILogger<Worker> logger, IConfiguration config)
         {
             _logger = logger;
+            _config = config;
             receiver = new(logger);
         }
 
@@ -24,12 +26,11 @@ namespace TxReceiverSvc
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            //while (!stoppingToken.IsCancellationRequested)
-            //{
-            //    _logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
-            //    await Task.Delay(1000, stoppingToken);
-            //}
-            receiver.client.Connect("127.0.0.1", 59998);
+            string server_ip = _config["ServerIP"] ?? "127.0.0.1";
+            string server_port = _config["ServerPort"] ?? string.Empty;
+            bool isInt = int.TryParse(server_port, out int port);
+            if (!isInt) port = 59998;
+            receiver.client.Connect(server_ip, port);
             task = Task.Factory.StartNew(() => receiver.Receiver());
         }
     }

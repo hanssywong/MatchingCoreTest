@@ -4,12 +4,24 @@ using MatchingLib;
 using Newtonsoft.Json;
 using System.Diagnostics;
 using System.Reflection;
+using Microsoft.Extensions.Configuration;
 
 if (args.Length == 1 && string.Compare(args[0],"help", StringComparison.OrdinalIgnoreCase) == 0 || args.Length < 4)
 {
     HelpMsg();
     return;
 }
+
+#region Add appsettings.json
+var builder = new ConfigurationBuilder();
+builder.SetBasePath(Directory.GetCurrentDirectory())
+    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+IConfiguration config = builder.Build();
+string server_ip = config["ServerIP"] ?? "127.0.0.1";
+string server_port = config["ServerPort"] ?? string.Empty;
+bool isInt = int.TryParse(server_port, out int port);
+if (!isInt) port = 59999;
+#endregion
 
 ManualResetEventSlim evt = new();
 SimpleTcpClient client  = new();
@@ -50,7 +62,7 @@ req.order.t = BuySell == 0 ? Order.OrderType.Buy : Order.OrderType.Sell;
 #region Send Order and wait for reply then exit
 Task task = Task.Factory.StartNew(() => RespReceiver());
 Console.WriteLine("Send Order");
-client.Connect("127.0.0.1", 59999);
+client.Connect(server_ip, port);
 client.Send(req);
 Console.WriteLine("Wait for reply and then exit");
 evt.Wait();
